@@ -1,33 +1,83 @@
+"""Q-tensor operations for the NumPy backend.
+
+Provides construction, decomposition, energy computation and time-stepping
+routines for the symmetric traceless Q-tensor on a 2D lattice.
+"""
+from __future__ import annotations
+
 import numpy as np
+from numpy.typing import NDArray
 
-from src.numpy_backend.diff import  laplacian_2D_9_point_isotropic
+from src.numpy_backend.diff import laplacian_2D_9_point_isotropic
 
-rng = np.random.default_rng(12345)
-
-def make_traceless_symmetric(arr):
-    # symmetric
-    tmp = 0.5 * (arr[...,0,1] + arr[...,1,0])
-    arr[...,0,1] = arr[...,1,0] = tmp
-    # traceless
-    tmp = 0.5 * (arr[...,0,0] + arr[...,1,1])
-    arr[...,0,0] -= tmp
-    arr[...,1,1] -= tmp
+_rng = np.random.default_rng(12345)
 
 
-def functional_derivative_LdG(Q, a,b, K):
-    Q_sq = Q @ Q  # "@" is matrix multiplication
-    tr_Q_sq = Q_sq[...,0,0] + Q_sq[...,1,1]  # Tr[Q^2]
-    answer = np.empty_like(Q)
-    for i in [0,1]:
-        for j in [0,1]:
-            answer[...,i,j] = (
-                  Q[...,i,j] * (a + 0.5* b * tr_Q_sq)
-            )
+# ---------------------------------------------------------------------------
+# Tensor helpers
+# ---------------------------------------------------------------------------
+
+def make_traceless_symmetric(arr: NDArray) -> None:
+    """Enforce traceless symmetry on a ``(..., 2, 2)`` tensor field *in-place*.
+
+    Parameters
+    ----------
+    arr : NDArray
+        Tensor field of shape ``(..., 2, 2)``.
+    """
+    tmp = 0.5 * (arr[..., 0, 1] + arr[..., 1, 0])
+    arr[..., 0, 1] = arr[..., 1, 0] = tmp
+    tmp = 0.5 * (arr[..., 0, 0] + arr[..., 1, 1])
+    arr[..., 0, 0] -= tmp
+    arr[..., 1, 1] -= tmp
+
+
+# ---------------------------------------------------------------------------
+# LdG physics
+# ---------------------------------------------------------------------------
+
+def functional_derivative_LdG(
+    Q: NDArray, a: float, b: float, K: float,
+) -> NDArray:
+    """Compute the functional derivative of the Landau-de Gennes free energy.
+
+    Parameters
+    ----------
+    Q : NDArray
+        Q-tensor field of shape ``(L, L, 2, 2)``.
+    a, b, K : float
+        Material parameters.
+
+    Returns
+    -------
+    NDArray
+        Functional derivative, same shape as *Q*.
+    """
+    Q_sq = Q @ Q
+    tr_Q_sq = Q_sq[..., 0, 0] + Q_sq[..., 1, 1]
+    answer = Q * (a + 0.5 * b * tr_Q_sq)[..., None, None]
     answer -= K * laplacian_2D_9_point_isotropic(Q)
     make_traceless_symmetric(answer)
     return answer
 
-def compute_free_energy(Q, a,b, K):
+
+def compute_free_energy(
+    Q: NDArray, a: float, b: float, K: float,
+) -> NDArray:
+    """Compute the LdG free-energy density on every lattice site.
+
+    Parameters
+    ----------
+    Q : NDArray
+        Q-tensor field of shape ``(L, L, 2, 2)``.
+    a, b, K : float
+        Material parameters.
+
+    Returns
+    -------
+    NDArray
+        Scalar field of shape ``(L, L)``.
+    """
     Q_sq = Q @ Q
     tr_Q_sq = Q_sq[..., 0, 0] + Q_sq[..., 1, 1]
     f_local = 0.5 * a * tr_Q_sq + 0.125 * b * tr_Q_sq**2
@@ -36,60 +86,131 @@ def compute_free_energy(Q, a,b, K):
     for i in range(2):
         for j in range(2):
             grad_Q_ij = np.gradient(Q[..., i, j])
-            grad_squared = grad_Q_ij[0]**2 + grad_Q_ij[1]**2
+            grad_squared = grad_Q_ij[0] ** 2 + grad_Q_ij[1] ** 2
             f_grad += 0.5 * K * grad_squared
 
-    f_total = f_local + f_grad
-    return f_total
+    return f_local + f_grad
 
-def model_A_LdG(Q, a,b, K, dt, gamma):
-    return Q - dt * gamma * functional_derivative_LdG(Q, a,b, K)
 
-#To plot the results, we'll need the degree of order $S$ and the director $\hat n$ as the greatest eigenvalue of $Q$ and its corresponding eigenvector.
+def model_A_LdG(
+    Q: NDArray, a: float, b: float, K: float, dt: float, gamma: float,
+) -> NDArray:
+    """One explicit-Euler step of Model-A relaxational dynamics.
 
-def get_n_S_from_Q(Q):
+    Parameters
+    ----------
+    Q : NDArray
+        Current Q-tensor field.
+    a, b, K : float
+        Material parameters.
+    dt : float
+        Time step.
+    gamma : float
+        Kinetic coefficient.
+
+    Returns
+    -------
+    NDArray
+        Updated Q-tensor field.
+    """
+    return Q - dt * gamma * functional_derivative_LdG(Q, a, b, K)
+
+
+# ---------------------------------------------------------------------------
+# Q  <-->  (n, S) conversions
+# ---------------------------------------------------------------------------
+
+def get_n_S_from_Q(Q: NDArray) -> tuple[NDArray, NDArray]:
+    """Extract the director and scalar order parameter from the Q-tensor.
+
+    Parameters
+    ----------
+    Q : NDArray
+        Q-tensor field of shape ``(L, L, 2, 2)``.
+
+    Returns
+    -------
+    n : NDArray
+        Director field of shape ``(L, L, 2)``.
+    S : NDArray
+        Scalar order-parameter field of shape ``(L, L)``.
+    """
     eigenvals, eigenvecs = np.linalg.eigh(Q)
-    S = eigenvals[..., -1]  # greatest eigenvalue
-    n = eigenvecs[..., -1]  # corresponding eigenvector
+    S = eigenvals[..., -1]
+    n = eigenvecs[..., -1]
     return n, S
 
-def get_Q_from_n_S(n,S):
-    L = S.shape[0]  # Assuming S and n are square arrays with shape (L, L)
-    Q = np.zeros((L, L, 2, 2))
-    for i in range(L):
-        for j in range(L):
-            ni = n[i, j]  # Director vector at site (i,j)
-            outer = np.outer(ni, ni)  # Outer product of n with itself
-            Q[i, j] = 2 * S[i, j] * (outer - 0.5 * np.eye(2))  # Apply the Q tensor formula
-            
-    return Q
 
-def get_Q_from_n_S(n, S):
-    # Compute the outer product for each vector. The new axes allow broadcasting
-    # so that each element becomes a 2x2 matrix.
+def get_Q_from_n_S(n: NDArray, S: NDArray | float) -> NDArray:
+    """Construct a Q-tensor field from a director and order parameter.
+
+    Parameters
+    ----------
+    n : NDArray
+        Director field of shape ``(L, L, 2)``.
+    S : NDArray or float
+        Scalar order parameter (field or constant).
+
+    Returns
+    -------
+    NDArray
+        Q-tensor field of shape ``(L, L, 2, 2)``.
+    """
     outer = n[..., :, None] * n[..., None, :]
-    
-    # Create a 2x2 identity matrix
     I = np.eye(2)
-    
-    # Reshape S for broadcasting and compute the Q tensor
-    Q = 2 * S[..., None, None] * (outer - 0.5 * I)
+    S_arr = np.asarray(S)
+    Q = 2 * S_arr[..., None, None] * (outer - 0.5 * I)
     return Q
 
-def compute_global_order_parameter(Q):
+
+# ---------------------------------------------------------------------------
+# Global diagnostics
+# ---------------------------------------------------------------------------
+
+def compute_global_order_parameter(Q: NDArray) -> float:
+    """Compute the global scalar order parameter from the spatially-averaged Q.
+
+    Parameters
+    ----------
+    Q : NDArray
+        Q-tensor field of shape ``(L, L, 2, 2)`` (may contain NaNs).
+
+    Returns
+    -------
+    float
+        Largest eigenvalue of the lattice-averaged Q-tensor.
+    """
     Q_avg = np.nanmean(Q, axis=(0, 1))
     eigenvalues, _ = np.linalg.eigh(Q_avg)
-    global_order_parameter = eigenvalues[-1]
-    return global_order_parameter
+    return float(eigenvalues[-1])
 
-def make_random_Q(L,S):
-    theta = 2 * np.pi * rng.random((L, L))  # random orientations
+
+# ---------------------------------------------------------------------------
+# Random initialisation
+# ---------------------------------------------------------------------------
+
+def make_random_Q(L: int, S: float) -> NDArray:
+    """Generate a random Q-tensor field with uniform random director angles.
+
+    Parameters
+    ----------
+    L : int
+        Side length of the square lattice.
+    S : float
+        Scalar order parameter used everywhere.
+
+    Returns
+    -------
+    NDArray
+        Q-tensor field of shape ``(L, L, 2, 2)``.
+    """
+    theta = 2 * np.pi * _rng.random((L, L))
     n = np.empty((L, L, 2))
     n[..., 0] = np.cos(theta)
     n[..., 1] = np.sin(theta)
 
-    Q = np.empty((L,L,2,2))
+    Q = np.empty((L, L, 2, 2))
     for i in [0, 1]:
         for j in [0, 1]:
-            Q[..., i,j]  = 2 * S * (n[...,i] * n[...,j] - 0.5 * (1 if i==j else 0))
+            Q[..., i, j] = 2 * S * (n[..., i] * n[..., j] - 0.5 * (1 if i == j else 0))
     return Q

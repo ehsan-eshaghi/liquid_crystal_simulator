@@ -5,36 +5,82 @@
 This project implements a 2D simulation framework for nematic liquid crystals governed by the Landau-de Gennes (LdG) theory. Two solvers are provided:
 
 - A **NumPy-based explicit Euler integrator** for pedagogical clarity.
-- A **JAX-accelerated solver** with GPU support and adaptive time stepping using the **Dormand–Prince method** (under development).
+- A **JAX-accelerated solver** with GPU support and adaptive time stepping using the **Dormand-Prince method** (under development).
 
-Both solvers simulate the relaxational dynamics of the tensor order parameter \( Q_{ij} \), capturing defect evolution and energy minimization on a discretized lattice.
+Both solvers simulate the relaxational dynamics of the tensor order parameter \( Q_{ij} \), capturing defect evolution and energy minimisation on a discretised lattice.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 .
-├── a_-1.0_b_1.0_K_1.0_r_30_S_1.0_Q.gif       # Sample simulation output (Q-tensor visualization)
-├── config.ini                                # Simulation parameters
-├── jax_simulation_data.pkl                   # Output from JAX solver
-├── numpy_simulation_data.pkl                 # Output from NumPy solver
-├── run_simulations.py                        # CLI to run and compare both solvers
-├── LICENSE
+├── pyproject.toml                  # Project metadata & dependencies
+├── config.ini                      # Simulation parameters
+├── scripts/
+│   ├── run_simulations.py          # CLI to run parameter sweeps
+│   ├── visualize.py                # Generate plots, GIFs and videos
+│   └── dt_euler_finder.py          # Find max stable Euler time step
 ├── src/
-│   ├── jax_backend/                          # GPU-accelerated backend
-│   └── numpy_backend/                        # CPU-only backend
-└── visualize.py                              # Plotting and animation utilities
+│   ├── config.py                   # Centralised configuration (dataclasses)
+│   ├── visualization.py            # Rendering & export helpers
+│   ├── common/
+│   │   └── boundary.py             # Shared masks & director initialisation
+│   ├── numpy_backend/
+│   │   ├── diff.py                 # Finite-difference operators
+│   │   ├── q_tensor.py             # Q-tensor operations
+│   │   └── runner.py               # Simulation runner (Euler)
+│   └── jax_backend/
+│       ├── boundary.py             # JIT-compiled apply_mask
+│       ├── diff.py                 # Finite-difference operators (JAX)
+│       ├── q_tensor.py             # Q-tensor operations (JAX)
+│       └── runner.py               # Simulation runner (Euler / Dopri5)
+├── LICENSE
+└── README.md
 ```
 
 ---
 
-## 🧪 Thesis Overview
+## Installation
+
+```bash
+# Core (NumPy backend only)
+pip install .
+
+# With JAX + GPU support
+pip install ".[jax]"
+```
+
+---
+
+## Usage
+
+Run a parameter sweep:
+
+```bash
+python -m scripts.run_simulations --backend jax --integrator dopri5
+```
+
+Generate visualisations from saved data:
+
+```bash
+python -m scripts.visualize --backend jax
+```
+
+Find the maximum stable Euler time step:
+
+```bash
+python -m scripts.dt_euler_finder
+```
+
+---
+
+## Thesis Overview
 
 This codebase supports the experiments and figures in the thesis:
 
-**Title:** *Simulating Nematic Liquid Crystal Dynamics Using Landau-de Gennes Theory: From Euler Integration to GPU-Accelerated Adaptive Solvers*  
-**Author:** Ehsan Es'haghi  
+**Title:** *Simulating Nematic Liquid Crystal Dynamics Using Landau-de Gennes Theory: From Euler Integration to GPU-Accelerated Adaptive Solvers*
+**Author:** Ehsan Es'haghi
 **Date:** March 2025 (in progress, not yet published)
 
 The simulations model relaxational (Model A) dynamics of nematic order on a 2D lattice. The code allows:
@@ -46,7 +92,7 @@ The simulations model relaxational (Model A) dynamics of nematic order on a 2D l
 
 ---
 
-## 🚧 Roadmap
+## Roadmap
 
 Planned features include:
 
@@ -54,20 +100,20 @@ Planned features include:
 - [ ] External field coupling (e.g., electric or magnetic)
 - [ ] Anchoring angle control for boundary conditions
 - [ ] Inhomogeneous material parameters
-- [ ] Multi-domain Q-tensor initialization strategies
-- [ ] Improved visualization and energy diagnostics
-- [ ] Finalize adaptive Dormand–Prince solver for production use
+- [ ] Multi-domain Q-tensor initialisation strategies
+- [ ] Improved visualisation and energy diagnostics
+- [ ] Finalise adaptive Dormand-Prince solver for production use
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-Contributions are welcome! Whether it’s fixing a bug, optimizing performance, or adding new physics modules, feel free to fork the repo and submit a pull request.
+Contributions are welcome! Whether it's fixing a bug, optimising performance, or adding new physics modules, feel free to fork the repo and submit a pull request.
 
-For major changes or suggestions, open an issue to discuss them first. Let’s build something useful for the liquid crystal simulation community 🚀
+For major changes or suggestions, open an issue to discuss them first.
 
 ---
 
-## 📜 License
+## License
 
 This project is licensed under the MIT License. See [LICENSE](./LICENSE) for details.

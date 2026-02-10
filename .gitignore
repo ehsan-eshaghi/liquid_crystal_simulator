@@ -208,3 +208,8 @@ __marimo__/
 
 visualization_jax/
 visualization_numpy/
+
+# Simulation output
+*.pkl
+*.gif
+*.mp4

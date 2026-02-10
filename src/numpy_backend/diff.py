@@ -1,39 +1,75 @@
-import numpy as np
+"""Finite-difference operators for the NumPy backend."""
+from __future__ import annotations
 
-def laplacian_2D(c):
+import numpy as np
+from numpy.typing import NDArray
+
+
+def laplacian_2D(c: NDArray) -> NDArray:
+    """Standard 5-point Laplacian stencil on a periodic 2D grid.
+
+    Parameters
+    ----------
+    c : NDArray
+        Scalar or tensor field with spatial dimensions along axes 0 and 1.
+
+    Returns
+    -------
+    NDArray
+        Discrete Laplacian of *c*.
+    """
     return (
-          np.roll(c, -1, axis=0)  # look 1 ahead in x
-        + np.roll(c,  1, axis=0)  # look 1 behind in x
-        + np.roll(c, -1, axis=1)  # look 1 ahead in y
-        + np.roll(c,  1, axis=1)  # look 1 behind in y
+        np.roll(c, -1, axis=0)
+        + np.roll(c, 1, axis=0)
+        + np.roll(c, -1, axis=1)
+        + np.roll(c, 1, axis=1)
         - 4 * c
     )
 
-def laplacian_2D_9_point_isotropic(c, h=1.0):
+
+def laplacian_2D_9_point_isotropic(c: NDArray, h: float = 1.0) -> NDArray:
+    """Isotropic 9-point Laplacian stencil on a periodic 2D grid.
+
+    Parameters
+    ----------
+    c : NDArray
+        Scalar or tensor field with spatial dimensions along axes 0 and 1.
+    h : float
+        Grid spacing (default ``1.0``).
+
+    Returns
+    -------
+    NDArray
+        Discrete Laplacian of *c*.
     """
-    Compute the Laplacian of a 2D array using the isotropic 9-point stencil.
-    
-    Parameters:
-        c (ndarray): 2D array representing the scalar field.
-        h (float): Grid spacing (default is 1.0).
-    
-    Returns:
-        ndarray: The Laplacian of the input array.
-    """
-    laplacian = (
-          np.roll(c, -1, axis=0)  # look 1 ahead in x
-        + np.roll(c,  1, axis=0)  # look 1 behind in x
-        + np.roll(c, -1, axis=1)  # look 1 ahead in y
-        + np.roll(c,  1, axis=1)  # look 1 behind in y
-        + np.roll(np.roll(c, -1, axis=0), -1, axis=1)  # top-right diagonal
-        + np.roll(np.roll(c, -1, axis=0),  1, axis=1)  # top-left diagonal
-        + np.roll(np.roll(c,  1, axis=0), -1, axis=1)  # bottom-right diagonal
-        + np.roll(np.roll(c,  1, axis=0),  1, axis=1)  # bottom-left diagonal
-        - 8 * c  # center point
+    return (
+        np.roll(c, -1, axis=0)
+        + np.roll(c, 1, axis=0)
+        + np.roll(c, -1, axis=1)
+        + np.roll(c, 1, axis=1)
+        + np.roll(np.roll(c, -1, axis=0), -1, axis=1)
+        + np.roll(np.roll(c, -1, axis=0), 1, axis=1)
+        + np.roll(np.roll(c, 1, axis=0), -1, axis=1)
+        + np.roll(np.roll(c, 1, axis=0), 1, axis=1)
+        - 8 * c
     ) / (3 * h**2)
-    
-    return laplacian
 
 
-def diffuse_2D(c, D, dt):
+def diffuse_2D(c: NDArray, D: float, dt: float) -> NDArray:
+    """One explicit-Euler diffusion step.
+
+    Parameters
+    ----------
+    c : NDArray
+        Concentration / field to diffuse.
+    D : float
+        Diffusion coefficient.
+    dt : float
+        Time step.
+
+    Returns
+    -------
+    NDArray
+        Field after one diffusion step.
+    """
     return c + dt * D * laplacian_2D_9_point_isotropic(c)
